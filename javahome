@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+import os
+import platform
+import re
+import pprint as pp
+import argparse
+import subprocess
+import sys
+from argparse import ArgumentParser, REMAINDER
+
+
+class javahome(object):
+
+    def __init__(self):
+        self._java_homes: [{str:str}] = None
+
+
+    @property
+    def _base_locations(self) -> {str:str}:
+        return {
+            "darwin": "/Library/Java/JavaVirtualMachines",
+            "linux": "/usr/lib/jvm"
+        }
+
+    @property
+    def _jdk_home_prefix(self) -> {str:str}:
+        return {
+            "darwin": "Contents/Home",
+            "linux": ""
+        }
+
+    @property
+    def _current_os(self):
+        return platform.system().lower()
+
+    @property
+    def _java_homes_base(self) -> str:
+        if self._base_locations.get(self._current_os) is not None:
+            result = self._base_locations[self._current_os]
+        else:
+            raise Exception("No JVM location data for {}".format(self._current_os))
+        return result
+
+    @property
+    def java_homes(self) -> [{str:str}]:
+        if self._java_homes is None:
+            suffix = self._jdk_home_prefix.get(self._current_os)
+            if suffix is None:
+                raise Exception("No JVM location data for {}".format(self._current_os))
+            result: [{str:str}] = []
+            base = self._java_homes_base
+            subdirectories = os.listdir(base)
+            for x in subdirectories:
+                fullpath = os.path.join(base, x, suffix)
+                release_file = os.path.join(fullpath, "release")
+                metadata: {str:str} = {}
+                if os.path.isdir(fullpath) and os.path.isfile(release_file):
+                    with open(release_file, "r") as f:
+                        metadata["JAVA_HOME"] = fullpath
+                        for line in f.readlines():
+                            line = line.strip()
+                            groups = re.search("(.+)=\"(.+)\"$", line).groups()
+                            metadata[str(groups[0])] = str(groups[1])
+                    result.append(metadata)
+            result.sort(key=lambda x: x.get("JAVA_VERSION"), reverse=True)
+            self._java_homes = result
+        return self._java_homes
+
+    def version_matches(self, a: str, b: str) -> str:
+        if a == b:
+            return True
+        return False
+
+    def filter_entries(self, version: str = None, arch: str = None ):
+        result = self.java_homes
+        if version is not None:
+            result = list(filter(lambda item: self.version_matches(item.get("JAVA_VERSION"), version), result))
+            #print("version:")
+            #pp.pprint(result)
+        if arch is not None:
+            result = list(filter(lambda item: item.get("OS_ARCH") == arch, result))
+            #print("arch:")
+            #pp.pprint(result)
+
+        return result
+
+
+
+if __name__ == "__main__":
+    jh = javahome()
+    #pp.pprint(jh.java_homes)
+    arguments_parser = argparse.ArgumentParser()
+    arguments_parser.add_argument("-v", "--version", action="store", type=str, nargs='?')
+    arguments_parser.add_argument("-a", "--arch", action="store", type=str, nargs='?')
+    arguments_parser.add_argument("-F", "--failfast", action="store_true")
+    arguments_parser.add_argument( "--exec", action="store", type=str, nargs=REMAINDER )
+    options = vars(arguments_parser.parse_args())
+    #pp.pprint(options)
+    matches = jh.filter_entries(version=options.get("version"), arch=options.get("arch"))
+    if len(matches) == 0:
+        if options.get("failfast"):
+            raise Exception("Couldn't find a JAVA_HOME matching version {} and arch {}".format(options.get("version"), options.get("arch")))
+        else:
+            matches = jh.java_homes
+    #print(matches)
+    best_version = matches[0]
+    java_home = best_version.get("JAVA_HOME")
+    exec_command = options.get("exec")
+    if exec_command is not None:
+        newenv = os.environ.copy()
+        newenv["JAVA_HOME"] = java_home
+        newenv["PATH"] = os.environ["PATH"]+":"+java_home
+        command = exec_command
+        subprocess.run(command, env=newenv)
+    else:
+        print(java_home)
