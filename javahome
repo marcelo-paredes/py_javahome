@@ -59,7 +59,11 @@ class javahome(object):
                         metadata["JAVA_HOME"] = fullpath
                         for line in f.readlines():
                             line = line.strip()
-                            groups = re.search("(.+)=\"(.+)\"$", line).groups()
+                            search_result = re.search("(.+)=\"(.*)\"$", line)
+                            if search_result is None:
+                                print("line: {}".format(line))
+                                continue
+                            groups = search_result.groups()
                             metadata[str(groups[0])] = str(groups[1])
                     result.append(metadata)
             result.sort(key=lambda x: x.get("JAVA_VERSION"), reverse=True)
