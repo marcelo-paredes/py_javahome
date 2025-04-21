@@ -70,10 +70,22 @@ class javahome(object):
             self._java_homes = result
         return self._java_homes
 
-    def version_matches(self, a: str, b: str) -> str:
-        if a == b:
+    def version_matches(self, candidate: str, input: str) -> bool:
+        if input == candidate:
             return True
-        return False
+        input_parts = input.split(".")
+        candidate_parts = candidate.split(".")
+        l_input: int = len(input_parts)
+        l_candidate: int = len(candidate_parts)
+        if l_input > l_candidate:
+            return False
+        matched = True
+        for i in range(l_input):
+            li = int(input_parts[i])
+            lc = int(candidate_parts[i])
+            if li != lc:
+                matched = False
+        return matched
 
     def filter_entries(self, version: str = None, arch: str = None ):
         result = self.java_homes
